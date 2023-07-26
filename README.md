@@ -1,2 +1,2 @@
-# blush
-Blush refinement - For use in RELION-5
+# Blush Refinement
+This repository contains code for running Blush refinement in RELION-5.

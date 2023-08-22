@@ -33,9 +33,6 @@ setup(
     version="0.0.1",
     long_description=readme,
     packages=find_packages(),
-    entry_points={
-        'console_scripts': ['relion_python_blush=relion_blush:main']
-    },
     install_requires=install_requires,
     python_requires=">=3.5",
 )

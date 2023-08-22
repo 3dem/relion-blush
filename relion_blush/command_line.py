@@ -155,7 +155,7 @@ def class3d(data, model, device, strides, batch_size, debug=False):
         input_mask=radial_mask,
         device=device,
         strides=strides,
-        block_size=model_block_size,
+        block_size=int(model_block_size),
         batch_size=batch_size
     )
     logger.info(f"Running model time {round(time.time() - t, 2)} s")
@@ -235,7 +235,7 @@ def main():
     model, model_path = install_and_load_model(
         name=args.model_name,
         device="cpu",
-        verbose=True
+        verbose=data is None
     )
 
     logger.info(f"Loading model time {round(time.time() - t, 2)} s")
@@ -274,6 +274,8 @@ def main():
         refine3d(data, model, device, args.strides, args.batch_size)
     else:
         raise NotImplementedError(f"Mode not supported: {data['mode']}")
+
+    print("success")
 
 
 if __name__ == "__main__":

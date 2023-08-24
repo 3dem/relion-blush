@@ -38,8 +38,8 @@ def refine3d(data, model, device, strides, batch_size, debug=False):
     logger.info(f"Resample time {round(time.time() - t, 2)} s")
 
     # Run model -----------------------
-    model_block_size = model.block_size
-    model_voxel_size = model.voxel_size
+    model_block_size = int(model.block_size)
+    model_voxel_size = int(model.voxel_size)
     recons_df_unfil_nv, _ = normalize_voxel_size_fourier(recons_df_unfil, data["pixel_size"], model_voxel_size)
     recons_df_unfil_nv *= (recons_df_unfil_nv.shape[0] / recons_df_unfil.shape[0])**3
     denoise_input = pad_ifft(recons_df_unfil_nv, pad)
@@ -138,8 +138,8 @@ def class3d(data, model, device, strides, batch_size, debug=False):
     logger.info(f"Resample time {round(time.time() - t, 2)} s")
 
     # Run model -----------------------
-    model_block_size = model.block_size
-    model_voxel_size = model.voxel_size
+    model_block_size = int(model.block_size)
+    model_voxel_size = int(model.voxel_size)
     recons_df_nv, _ = normalize_voxel_size_fourier(recons_df, data["pixel_size"], model_voxel_size)
     recons_df_nv *= (recons_df_nv.shape[0] / recons_df.shape[0])**3
     denoise_input = pad_ifft(recons_df_nv, pad)
@@ -155,7 +155,7 @@ def class3d(data, model, device, strides, batch_size, debug=False):
         input_mask=radial_mask,
         device=device,
         strides=strides,
-        block_size=int(model_block_size),
+        block_size=model_block_size,
         batch_size=batch_size
     )
     logger.info(f"Running model time {round(time.time() - t, 2)} s")

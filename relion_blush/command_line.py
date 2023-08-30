@@ -279,9 +279,23 @@ def main():
     model = model.to(device)
 
     if data['mode'] == "classification":
-        class3d(data, model, device, args.strides, args.batch_size)
+        class3d(
+            data=data,
+            model=model,
+            device=device,
+            strides=args.strides,
+            batch_size=args.batch_size,
+            debug=args.debug
+        )
     elif data['mode'] == "refine" or data['mode'] == "refine_final":
-        refine3d(data, model, device, args.strides, args.batch_size, args.skip_spectral_trailing)
+        refine3d(
+            data=data,
+            model=model,
+            device=device,
+            strides=args.strides,
+            batch_size=args.batch_size,
+            debug=args.debug,
+            skip_spectral_trailing=args.skip_spectral_trailing)
     else:
         raise NotImplementedError(f"Mode not supported: {data['mode']}")
 

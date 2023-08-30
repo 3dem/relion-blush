@@ -30,7 +30,7 @@ from relion_blush.util import *
 EPS = 1e-6
 
 
-def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectral_tailing=False):
+def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectral_trailing=False):
     # Load and prepare volumes --------
     pad = data["padding"]
     t = time.time()
@@ -74,7 +74,7 @@ def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectra
         crossover_grid = get_crossover_grid(denoised_df_nv.shape[-1] - 3, data, filter_edge_width=3)
         out_df = denoised_df * crossover_grid + recons_df * (1 - crossover_grid)
     else:
-        if skip_spectral_tailing:
+        if skip_spectral_trailing:
             logger.info(f"Skipping spectral trailing")
             out_df = denoised_df
         else:
@@ -212,7 +212,7 @@ def main():
     parser.add_argument('-b', '--batch_size', type=int, default=1)
     parser.add_argument('-g', '--gpu', type=str, default=None)
     parser.add_argument('--debug', action="store_true")
-    parser.add_argument('--skip-spectral-tailing', action="store_true")
+    parser.add_argument('--skip-spectral-trailing', action="store_true")
     args = parser.parse_args()
 
     # Load data -------------------------
@@ -281,7 +281,7 @@ def main():
     if data['mode'] == "classification":
         class3d(data, model, device, args.strides, args.batch_size)
     elif data['mode'] == "refine" or data['mode'] == "refine_final":
-        refine3d(data, model, device, args.strides, args.batch_size, args.skip_spectral_tailing)
+        refine3d(data, model, device, args.strides, args.batch_size, args.skip_spectral_trailing)
     else:
         raise NotImplementedError(f"Mode not supported: {data['mode']}")
 

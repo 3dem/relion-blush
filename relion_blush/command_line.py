@@ -75,8 +75,10 @@ def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectra
         out_df = denoised_df * crossover_grid + recons_df * (1 - crossover_grid)
     else:
         if skip_spectral_tailing:
+            logger.info(f"Skipping spectral trailing")
             out_df = denoised_df
         else:
+            logger.info(f"Applying spectral trailing")
             crossover_grid = get_crossover_grid(max_denoised_index, data, filter_edge_width=3)
             out_df = denoised_df * crossover_grid
 

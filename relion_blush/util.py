@@ -719,8 +719,12 @@ def local_correlation(grid1, grid2, kernel_size):
 def get_device_assignment(job_dir, device_id_list=None, max_retry=300):
     if torch.cuda.is_available():
         timeout = 0
+
         if device_id_list is None or len(device_id_list) == 0:
             device_id_list = np.arange(torch.cuda.device_count()).tolist()
+        else:
+            device_id_list = list(set(device_id_list))  # Get unique values
+
         for retry in range(max_retry):
             for id in device_id_list:
                 if id < 0:

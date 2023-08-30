@@ -716,16 +716,20 @@ def local_correlation(grid1, grid2, kernel_size):
     return corr.squeeze(0).squeeze(0)
 
 
-def get_device_assignment(job_dir, max_retry=300):
+def get_device_assignment(job_dir, device_id_list=None, max_retry=300):
     if torch.cuda.is_available():
         timeout = 0
+        if device_id_list is None or len(device_id_list) == 0:
+            device_id_list = np.arange(torch.cuda.device_count()).tolist()
         for retry in range(max_retry):
-            for i in range(torch.cuda.device_count()):
-                device_lock_file_path = os.path.join(job_dir, f"device_lock_id{i}")
+            for id in device_id_list:
+                if id < 0:
+                    return "cpu", None
+                device_lock_file_path = os.path.join(job_dir, f"device_lock_id{id}")
                 device_lock_file = FileLock(device_lock_file_path)
                 try:
                     device_lock_file.acquire(timeout=timeout)
-                    return f"cuda:{i}", device_lock_file
+                    return f"cuda:{id}", device_lock_file
                 except TimeoutError:
                     pass
             timeout = 1
@@ -734,8 +738,22 @@ def get_device_assignment(job_dir, max_retry=300):
 
 
 class DeviceLock:
-    def __init__(self, job_dir, max_retry=100):
-        self.device, self.device_lock_file = get_device_assignment(job_dir, max_retry)
+    def __init__(self, job_dir, device_str=None, max_retry=100):
+        devices = None
+        if device_str is not None:
+            device_count = torch.cuda.device_count()
+            numbers = re.findall(r"[0-9\-]+", device_str)
+            devices = []
+            for n in numbers:
+                n = int(n)
+                if n < 0:
+                    devices = [-1]
+                    break
+                if n < device_count:
+                    devices.append(n)
+
+        self.device, self.device_lock_file = get_device_assignment(
+            job_dir, device_id_list=devices, max_retry=max_retry)
 
     def get_device(self):
         return self.device
@@ -797,8 +815,8 @@ def install_and_load_model(
     model = model_module.BlushModel().eval()
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
-    model.voxel_size = checkpoint["voxel_size"]
-    model.block_size = checkpoint["block_size"]
+    model.voxel_size = int(checkpoint["voxel_size"])
+    model.block_size = int(checkpoint["block_size"])
     model.no_mask = checkpoint["no_mask"]
 
     if verbose:

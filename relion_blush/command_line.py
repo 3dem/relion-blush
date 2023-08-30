@@ -30,7 +30,7 @@ from relion_blush.util import *
 EPS = 1e-6
 
 
-def refine3d(data, model, device, strides, batch_size, debug=False):
+def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectral_tailing=False):
     # Load and prepare volumes --------
     pad = data["padding"]
     t = time.time()
@@ -69,14 +69,18 @@ def refine3d(data, model, device, strides, batch_size, debug=False):
     # Apply mixing ---------------------------------
     max_denoised_index = res_from_fsc(data["fsc_spectra"], res=None, threshold=1. / 7.) - 1
 
-    if max_denoised_index > denoised_df_nv.shape[-1]:
-        crossover_grid = get_crossover_grid(max_denoised_index, data, filter_edge_width=3)
+    if max_denoised_index > denoised_df_nv.shape[-1] - 3:
+        logger.info(f"Denoiser maximum resolution reached, mixing in data for higher frequencies.")
+        crossover_grid = get_crossover_grid(denoised_df_nv.shape[-1] - 3, data, filter_edge_width=3)
         out_df = denoised_df * crossover_grid + recons_df * (1 - crossover_grid)
-        out = pad_ifft(out_df, pad)
     else:
-        crossover_grid = get_crossover_grid(max_denoised_index, data, filter_edge_width=3)
-        out_df = denoised_df * crossover_grid
-        out = pad_ifft(out_df, pad)
+        if skip_spectral_tailing:
+            out_df = denoised_df
+        else:
+            crossover_grid = get_crossover_grid(max_denoised_index, data, filter_edge_width=3)
+            out_df = denoised_df * crossover_grid
+
+    out = pad_ifft(out_df, pad)
 
     if debug:
         save_mrc(
@@ -204,7 +208,9 @@ def main():
     parser.add_argument('-m', '--model_name', type=str, default="v1.0")
     parser.add_argument('-s', '--strides', type=int, default=20)
     parser.add_argument('-b', '--batch_size', type=int, default=1)
+    parser.add_argument('-g', '--gpu', type=str, default=None)
     parser.add_argument('--debug', action="store_true")
+    parser.add_argument('--skip-spectral-tailing', action="store_true")
     args = parser.parse_args()
 
     # Load data -------------------------
@@ -228,6 +234,8 @@ def main():
             diagnose=True,
             backtrace=True
         )
+
+    logger.info(f"ARGUMENTS: {args}")
 
     # Load model bundle ----------------------
     t = time.time()
@@ -262,7 +270,7 @@ def main():
         raise RuntimeError("Only skip padding=Yes is supported.")
 
     # Device assignment --------------
-    device_lock = DeviceLock(data["job_dir"])
+    device_lock = DeviceLock(data["job_dir"], device_str=args.gpu)
     device = device_lock.get_device()
     logger.info(f"Selected device: {device}")
     device = torch.device(device)
@@ -271,7 +279,7 @@ def main():
     if data['mode'] == "classification":
         class3d(data, model, device, args.strides, args.batch_size)
     elif data['mode'] == "refine" or data['mode'] == "refine_final":
-        refine3d(data, model, device, args.strides, args.batch_size)
+        refine3d(data, model, device, args.strides, args.batch_size, args.skip_spectral_tailing)
     else:
         raise NotImplementedError(f"Mode not supported: {data['mode']}")
 

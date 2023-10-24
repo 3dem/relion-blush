@@ -55,8 +55,8 @@ class ScanningBlockIterator:
         return coords, self.idx == self.count
 
 
-def get_fourier_shells(f):
-    (z, y, x) = f.shape
+def get_fourier_shells(shape):
+    (z, y, x) = shape
     Z, Y, X = np.meshgrid(np.linspace(-z // 2, z // 2 - 1, z),
                           np.linspace(-y // 2, y // 2 - 1, y),
                           np.linspace(0, x - 1, x), indexing="ij")
@@ -254,11 +254,13 @@ def apply_model(model, volume, device, input_mask=None, strides=48, block_size=1
 
 def index_to_res(index, voxel_size, box_size):
     """
-    Calculates the Fourier shell index from resolution and voxel size and box size.
+    Calculates resolution from the Fourier shell index and voxel size and box size.
 
     i = index, b = box_size / 2, r = resolution, v = voxel_size
     r = 2 * b * v / i
     """
+    if index <= 0:
+        return 1e3
     return box_size * voxel_size / index
 
 
@@ -554,7 +556,7 @@ def load_input_data(star_file_path):
     d["pixel_size"] = float(star_file['external_reconstruct_general']['rlnPixelSize'])
 
     d["spectral1d_index"] = np.array(star_file['external_reconstruct_tau2']['rlnSpectralIndex'], dtype=float)
-    d["spectral3d_index"] = get_fourier_shells(d["kernel"])
+    d["spectral3d_index"] = get_fourier_shells(d["kernel"].shape)
     d["spectral3d_mask"] = d["spectral3d_index"] < d["max_r"]
 
     tau2_spectra = np.array(star_file['external_reconstruct_tau2']['rlnReferenceTau2'], dtype=float)
@@ -614,49 +616,56 @@ def get_reconstructions(data):
     recons_df_unfil = recons_unweight / (data['kernel'] + weight_margin + 1e-30)
     recons_df = recons_unweight / (data['kernel'] + data["reg_grid"] + 1e-30)
 
-    return recons_df_unfil, recons_df
+    # Free memory
+    del data["real"]
+    del data["imag"]
+    del data["kernel"]
+    del data["reg_grid"]
+
+    return recons_df_unfil.astype(np.complex64), recons_df.astype(np.complex64)
 
 
-def pad_fft(grid, padding):
-    if padding < 1:
-        raise RuntimeError(f"Only padding >= 1 is supported (padding={padding}).")
+def gridding_correct(grid, padding, original_size=None, trilinear_interpolation=True):
+    size = grid.shape[-1]
+    if original_size is None:
+        original_size = size
 
-    ogrid = grid
-    if padding > 1:
-        in_sz = grid.shape[0]
-        out_sz = round(padding * in_sz)
-        out_sz += out_sz % 2
-        ogrid = np.zeros((out_sz, out_sz, out_sz), dtype=grid.dtype)
+    ls = torch.linspace(-(size // 2), size // 2 - 1, size)
+    c = torch.stack(torch.meshgrid(ls, ls, ls, indexing="ij"), 0)
+    r = torch.sqrt(torch.sum(torch.square(c), 0)) / (original_size * padding)
+    correction = torch.sinc(r)
 
-        f = out_sz // 2 - in_sz // 2
-        t = out_sz // 2 + in_sz // 2
-        ogrid[f:t, f:t, f:t] = grid
+    if trilinear_interpolation:
+        correction = torch.square(correction)
 
-    return np.fft.rfftn(np.fft.fftshift(ogrid)).astype(np.complex64)
+    if not torch.is_tensor(grid):
+        correction = correction.detach().numpy()
+
+    return grid / correction
 
 
-def pad_ifft(grid_ft, padding):
-    if padding < 1:
-        raise RuntimeError(f"Only padding >= 1 is supported (padding={padding}).")
-
+def pad_ifft(grid_ft, data=None):
     grid = np.fft.ifftshift(np.fft.irfftn(grid_ft)).astype(np.float32)
 
-    if padding > 1:
+    if data is not None and data['padding'] > 1:
         in_sz = grid.shape[0]
-        out_sz = round(in_sz / padding)
+        out_sz = round(in_sz / data['padding'])
         out_sz += out_sz % 2
 
         f = in_sz // 2 - out_sz // 2
         t = in_sz // 2 + out_sz // 2
-        return grid[f: t, f: t, f: t]
+        grid = grid[f:t, f:t, f:t]
+
+    if data is not None:
+        grid = gridding_correct(grid, data['padding'], original_size=data['original_size'])
 
     return grid
 
 
 def get_crossover_grid(crossover_index, data, filter_edge_width=3):
-    size = data["shape"][0]
+    size = data["original_size"]
 
-    r = data["spectral3d_index"]
+    r = get_fourier_shells((size, size, size // 2 + 1))
     scale_spectrum = np.zeros_like(r)
 
     filter_edge_halfwidth = filter_edge_width // 2
@@ -770,7 +779,7 @@ class DeviceLock:
 def install_and_load_model(
         name: str,
         device: str = "cpu",
-        verbose: bool = False
+        verbose: bool = False,
 ):
     model_list = {
         "v1.0": [
@@ -819,7 +828,7 @@ def install_and_load_model(
     model = model_module.BlushModel().eval()
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
-    model.voxel_size = int(checkpoint["voxel_size"])
+    model.voxel_size = float(checkpoint["voxel_size"])
     model.block_size = int(checkpoint["block_size"])
     model.no_mask = checkpoint["no_mask"]
 

@@ -40,22 +40,21 @@ def radial_mask_(pixel_size, particle_diameter, size):
 def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectral_trailing=False):
     # Load and prepare volumes --------
     t = time.time()
-    recons_df_unfil, recons_df = get_reconstructions(data)
+    recons_unfil, recons = get_reconstructions(data)
     logger.info(f"Resample time {round(time.time() - t, 2)} s")
 
     # Volume pre-process -----------------------
     t = time.time()
 
-    recons = None
-
     model_block_size = int(model.block_size)
     model_voxel_size = float(model.voxel_size)
 
+    recons_df_unfil = fft(recons_unfil)
     recons_df_unfil_nv, _ = normalize_voxel_size_fourier(recons_df_unfil, data["pixel_size"], model_voxel_size)
     recons_df_unfil_nv *= (recons_df_unfil_nv.shape[0] / recons_df_unfil.shape[0])**3
-    denoise_input = pad_ifft(recons_df_unfil_nv, data)
+    denoise_input = ifft(recons_df_unfil_nv)
 
-    logger.info(f"Volume preprocess time {round(time.time() - t, 2)} s")
+    logger.info(f"Volume preprocess rescale time {round(time.time() - t, 2)} s")
 
     # Radial masks -----------------------
     t = time.time()
@@ -91,11 +90,11 @@ def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectra
     t = time.time()
 
     denoised_nv = (denoised_nv * radial_mask_nv).cpu().numpy()
-    denoised_df_nv = np.fft.rfftn(np.fft.fftshift(denoised_nv)).astype(np.complex64)
+    denoised_df_nv = fft(denoised_nv)
     denoised_df = rescale_fourier(denoised_df_nv, data["original_size"])
     denoised_df *= (denoised_df.shape[0] / denoised_df_nv.shape[0])**3
 
-    logger.info(f"Running model time {round(time.time() - t, 2)} s")
+    logger.info(f"Post-processing rescale time {round(time.time() - t, 2)} s")
 
     # Output debug data ---------------------
     if debug:
@@ -109,9 +108,8 @@ def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectra
             data["output_path"][:-4] + "_debug_denoise_output.mrc",
             model_voxel_size
         )
-        recons = pad_ifft(recons_df, data) * radial_mask
         save_mrc(
-            recons,
+            recons * radial_mask,
             data["output_path"][:-4] + "_debug_base.mrc",
             data["pixel_size"]
         )
@@ -123,10 +121,8 @@ def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectra
         logger.info(f"Denoiser maximum resolution reached, mixing in data for higher frequencies.")
         crossover_grid = get_crossover_grid(denoised_df_nv.shape[-1] - 3, data, filter_edge_width=3)
 
-        recons = pad_ifft(recons_df, data) * radial_mask
-
-        recons_df = np.fft.rfftn(np.fft.fftshift(recons)).astype(np.complex64)
-        out_df = denoised_df * crossover_grid + recons_df * (1 - crossover_grid)
+        out_df = (denoised_df * crossover_grid +
+                  fft(recons * radial_mask) * (1 - crossover_grid))
     else:
         if skip_spectral_trailing:
             logger.info(f"Skipping spectral trailing")
@@ -141,7 +137,15 @@ def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectra
                 max_denoised_index, voxel_size=data['pixel_size'], box_size=data['original_size'])
             logger.info(f"Max denoised resolution: {round(max_denoised_res, 2)}")
 
-    out = pad_ifft(out_df)
+    out = ifft(out_df)
+
+    if os.path.exists("blush_smoothing_mask.mrc"):
+        logger.info(f'Applying smoothing mask')
+        mask, _, _ = load_mrc("blush_smoothing_mask.mrc")
+        smooth = fast_gaussian_filter(
+            torch.from_numpy(out)[None, None], kernel_size=int(5./data['pixel_size']))
+        smooth = smooth[0, 0].numpy()
+        out = out * mask + smooth * (1 - mask)
 
     # Output results ---------------------
     output_path = data["output_path"]
@@ -151,8 +155,6 @@ def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectra
         logger.info(f'Ouput to file {output_path}')
 
     elif data['mode'] == "refine_final":
-        if recons is None:
-            recons = pad_ifft(recons_df, data) * radial_mask
         save_mrc(recons, output_path, data["pixel_size"], np.array([0, 0, 0]))
         logger.info(f'Final reconstruction output to file {output_path}')
 
@@ -164,17 +166,19 @@ def refine3d(data, model, device, strides, batch_size, debug=False, skip_spectra
 def class3d(data, model, device, strides, batch_size, debug=False):
     # Load and prepare volumes --------
     t = time.time()
-    recons_df_unfil, recons_df = get_reconstructions(data)
-    del recons_df_unfil
+    recons_unfil, recons = get_reconstructions(data)
+    del recons_unfil
 
     logger.info(f"Resample time {round(time.time() - t, 2)} s")
 
     # Run model -----------------------
     model_block_size = int(model.block_size)
     model_voxel_size = float(model.voxel_size)
+
+    recons_df = fft(recons)
     recons_df_nv, _ = normalize_voxel_size_fourier(recons_df, data["pixel_size"], model_voxel_size)
     recons_df_nv *= (recons_df_nv.shape[0] / recons_df.shape[0])**3
-    denoise_input = pad_ifft(recons_df_nv, data)
+    denoise_input = ifft(recons_df_nv)
 
     t = time.time()
     mask_edge_width = int(10. / model_voxel_size)
@@ -196,20 +200,15 @@ def class3d(data, model, device, strides, batch_size, debug=False):
     denoised_nv = (denoised_nv * radial_mask).cpu().numpy()
 
     # Apply maximum resolution ---------------------
-    denoised_df_nv = np.fft.rfftn(np.fft.fftshift(denoised_nv)).astype(np.complex64)
-
+    denoised_df_nv = fft(denoised_nv)
     denoised_df = rescale_fourier(denoised_df_nv, data["original_size"])
     denoised_df *= (denoised_df.shape[0] / denoised_df_nv.shape[0])**3
 
     crossover_grid = get_crossover_grid(denoised_df_nv.shape[-1] - 2, data, filter_edge_width=3)
 
-    # Apply gridding correction in real-space
-    recons = pad_ifft(recons_df, data)
-    recons_df = np.fft.rfftn(np.fft.fftshift(recons)).astype(np.complex64)
-
     # Apply crossover in Fourier space
     out_df = denoised_df * crossover_grid + recons_df * (1 - crossover_grid)
-    out = pad_ifft(out_df)
+    out = ifft(out_df)
 
     if debug:
         save_mrc(

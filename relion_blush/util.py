@@ -601,6 +601,51 @@ def load_input_data(star_file_path):
     return d
 
 
+def gridding_correct(grid, padding, original_size=None, trilinear_interpolation=True):
+    size = grid.shape[-1]
+    if original_size is None:
+        original_size = size
+
+    ls = torch.linspace(-(size // 2), size // 2 - 1, size)
+    c = torch.stack(torch.meshgrid(ls, ls, ls, indexing="ij"), 0)
+    r = torch.sqrt(torch.sum(torch.square(c), 0)) / (original_size * padding)
+    correction = torch.sinc(r)
+
+    if trilinear_interpolation:
+        correction = torch.square(correction)
+
+    if not torch.is_tensor(grid):
+        correction = correction.detach().numpy()
+
+    return grid / correction
+
+
+def ifft(grid_ft):
+    return np.fft.ifftshift(np.fft.irfftn(grid_ft)).astype(np.float32)
+
+
+def fft(grid):
+    return np.fft.rfftn(np.fft.fftshift(grid)).astype(np.complex64)
+
+
+def pad_ifft(grid_ft, data=None):
+    grid = ifft(grid_ft)
+
+    if data is not None and data['padding'] > 1:
+        in_sz = grid.shape[0]
+        out_sz = round(in_sz / data['padding'])
+        out_sz += out_sz % 2
+
+        f = in_sz // 2 - out_sz // 2
+        t = in_sz // 2 + out_sz // 2
+        grid = grid[f:t, f:t, f:t]
+
+    if data is not None:
+        grid = gridding_correct(grid, data['padding'], original_size=data['original_size'])
+
+    return grid
+
+
 def get_reconstructions(data):
     kernel_ft_torch = torch.from_numpy(data['kernel'])
     spectral3d_index_torch = torch.from_numpy(data['spectral3d_index'])
@@ -622,44 +667,10 @@ def get_reconstructions(data):
     del data["kernel"]
     del data["reg_grid"]
 
-    return recons_df_unfil.astype(np.complex64), recons_df.astype(np.complex64)
+    recons_unfil = pad_ifft(recons_df_unfil.astype(np.complex64), data).astype(float)
+    recons = pad_ifft(recons_df.astype(np.complex64), data).astype(float)
 
-
-def gridding_correct(grid, padding, original_size=None, trilinear_interpolation=True):
-    size = grid.shape[-1]
-    if original_size is None:
-        original_size = size
-
-    ls = torch.linspace(-(size // 2), size // 2 - 1, size)
-    c = torch.stack(torch.meshgrid(ls, ls, ls, indexing="ij"), 0)
-    r = torch.sqrt(torch.sum(torch.square(c), 0)) / (original_size * padding)
-    correction = torch.sinc(r)
-
-    if trilinear_interpolation:
-        correction = torch.square(correction)
-
-    if not torch.is_tensor(grid):
-        correction = correction.detach().numpy()
-
-    return grid / correction
-
-
-def pad_ifft(grid_ft, data=None):
-    grid = np.fft.ifftshift(np.fft.irfftn(grid_ft)).astype(np.float32)
-
-    if data is not None and data['padding'] > 1:
-        in_sz = grid.shape[0]
-        out_sz = round(in_sz / data['padding'])
-        out_sz += out_sz % 2
-
-        f = in_sz // 2 - out_sz // 2
-        t = in_sz // 2 + out_sz // 2
-        grid = grid[f:t, f:t, f:t]
-
-    if data is not None:
-        grid = gridding_correct(grid, data['padding'], original_size=data['original_size'])
-
-    return grid
+    return recons_unfil, recons
 
 
 def get_crossover_grid(crossover_index, data, filter_edge_width=3):

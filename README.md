@@ -24,7 +24,15 @@ Please refer to the [RELION repository issue tracking](https://github.com/3dem/r
 
 ## Acknowledgements
 
-This project utilizes [RELION](https://github.com/3dem/relion), developed by the group of Prof. Sjors Scheres at the MRC Laboratory of Molecular Biology.
+The work in this repository is based on the research conducted in the paper 
+"Data-driven regularisation lowers the size barrier of cryo-EM structure determination" by Kimanius, Dari, et al. 
+The methodologies and algorithms presented in this paper are implemented in the code found within this repository. 
+
+For the complete details of the research and methods that inspired this work, please refer to the following publication:
+
+Kimanius, D., et al. (2023) Data-driven regularisation lowers the size barrier of cryo-EM structure determination. bioRxiv. 
+DOI: [10.1101/2023.10.23.563586](https://doi.org/10.1101/2023.10.23.563586).
+
 
 ## License
 

@@ -794,7 +794,7 @@ def install_and_load_model(
 ):
     model_list = {
         "v1.0": [
-            "ftp://ftp.mrc-lmb.cam.ac.uk/pub/dari/blush_v1.0.ckpt.gz",
+            "https://zenodo.org/records/10072731/files/blush_v1.0.ckpt.gz",
             "6e42a7d80231418bb77170619eeedf67b59be84078972a25a39fc3b82cd9c34e"
         ]
     }
@@ -813,8 +813,13 @@ def install_and_load_model(
             print(f"Installing Blush model ({name})...")
         os.makedirs(dest_dir, exist_ok=True)
 
+        source_url = model_list[name][0]
+
+        if verbose:
+            print(f"Downloading model weights from:\n   {source_url}")
+
         import gzip, shutil
-        torch.hub.download_url_to_file(model_list[name][0], model_path_gz, hash_prefix=model_list[name][1])
+        torch.hub.download_url_to_file(source_url, model_path_gz, hash_prefix=model_list[name][1])
         with gzip.open(model_path_gz, 'rb') as f_in:
             with open(model_path, 'wb') as f_out:
                 shutil.copyfileobj(f_in, f_out)

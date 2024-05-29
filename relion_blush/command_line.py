@@ -232,14 +232,15 @@ def main():
     # warnings.filterwarnings("error")
 
     # Arguments -----------------------
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser("Main command line for running Blush in RELION.")
     parser.add_argument('star_file', nargs='?', default=None)
-    parser.add_argument('-m', '--model_name', type=str, default="v1.0")
-    parser.add_argument('-s', '--strides', type=int, default=20)
-    parser.add_argument('-b', '--batch_size', type=int, default=1)
-    parser.add_argument('-g', '--gpu', type=str, default=None)
-    parser.add_argument('--debug', action="store_true")
-    parser.add_argument('--skip-spectral-trailing', action="store_true")
+    parser.add_argument('-m', '--model_name', type=str, default="v1.0", help="Model name to use")
+    parser.add_argument('-s', '--strides', type=int, default=20, help="Strides for running the denoiser")
+    parser.add_argument('-b', '--batch_size', type=int, default=1, help="Batch size for running denoiser")
+    parser.add_argument('-g', '--gpu', type=str, default=None, help="GPU id to use")
+    parser.add_argument('--device_timeout', type=int, default=1200, help="Time to wait for GPUs to free up.")
+    parser.add_argument('--debug', action="store_true", help="Debug mode (slower)")
+    parser.add_argument('--skip-spectral-trailing', action="store_true", help="Use no spectral trailing (unsafe).")
     args = parser.parse_args()
 
     # Load data -------------------------
@@ -309,7 +310,7 @@ def main():
     #     raise RuntimeError("Only skip padding=Yes is supported.")
 
     # Device assignment --------------
-    device_lock = DeviceLock(data["job_dir"], device_str=args.gpu)
+    device_lock = DeviceLock(data["job_dir"], device_str=args.gpu, max_retry=args.device_timeout)
     device = device_lock.get_device()
     logger.info(f"Selected device: {device}")
     device = torch.device(device)

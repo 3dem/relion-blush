@@ -762,7 +762,7 @@ def get_device_assignment(job_dir, device_id_list=None, max_retry=300):
 
 
 class DeviceLock:
-    def __init__(self, job_dir, device_str=None, max_retry=100):
+    def __init__(self, job_dir, device_str=None, max_retry=300):
         devices = None
         if device_str is not None:
             device_count = torch.cuda.device_count()

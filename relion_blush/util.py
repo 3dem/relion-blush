@@ -799,38 +799,39 @@ def install_and_load_model(
         ]
     }
 
-    if name not in model_list.keys():
-        return None
+    if name in model_list.keys():
+        dest_dir = os.path.join(torch.hub.get_dir(), "checkpoints", "relion_blush")
+        model_path = os.path.join(dest_dir, f"{name}.ckpt")
+        model_path_gz = model_path + ".gz"
+        completed_check_path = os.path.join(dest_dir, f"{name}_installed.txt")
+        
+        # Download file and install it if not already done
+        if not os.path.isfile(completed_check_path):
+            if verbose:
+                print(f"Installing Blush model ({name})...")
+                os.makedirs(dest_dir, exist_ok=True)
 
-    dest_dir = os.path.join(torch.hub.get_dir(), "checkpoints", "relion_blush")
-    model_path = os.path.join(dest_dir, f"{name}.ckpt")
-    model_path_gz = model_path + ".gz"
-    completed_check_path = os.path.join(dest_dir, f"{name}_installed.txt")
+            source_url = model_list[name][0]
 
-    # Download file and install it if not already done
-    if not os.path.isfile(completed_check_path):
-        if verbose:
-            print(f"Installing Blush model ({name})...")
-        os.makedirs(dest_dir, exist_ok=True)
+            if verbose:
+                print(f"Downloading model weights from:\n   {source_url}")
 
-        source_url = model_list[name][0]
+            import gzip, shutil
+            torch.hub.download_url_to_file(source_url, model_path_gz, hash_prefix=model_list[name][1])
+            with gzip.open(model_path_gz, 'rb') as f_in:
+                with open(model_path, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+                    os.remove(model_path_gz)
 
-        if verbose:
-            print(f"Downloading model weights from:\n   {source_url}")
+            with open(completed_check_path, "w") as f:
+                f.write("Successfully downloaded model")
 
-        import gzip, shutil
-        torch.hub.download_url_to_file(source_url, model_path_gz, hash_prefix=model_list[name][1])
-        with gzip.open(model_path_gz, 'rb') as f_in:
-            with open(model_path, 'wb') as f_out:
-                shutil.copyfileobj(f_in, f_out)
-        os.remove(model_path_gz)
+            if verbose:
+                print(f"Blush model ({name}) successfully installed in {dest_dir}")
 
-        with open(completed_check_path, "w") as f:
-            f.write("Successfully downloaded model")
-
-        if verbose:
-            print(f"Blush model ({name}) successfully installed in {dest_dir}")
-
+    else:
+        model_path = name
+        
     # Load checkpoint file
     checkpoint = torch.load(model_path, map_location="cpu")
 

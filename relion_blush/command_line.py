@@ -237,7 +237,8 @@ def main():
     parser.add_argument('-m', '--model_name', type=str, default="v1.0", help="Model name to use")
     parser.add_argument('-s', '--strides', type=int, default=20, help="Strides for running the denoiser")
     parser.add_argument('-b', '--batch_size', type=int, default=1, help="Batch size for running denoiser")
-    parser.add_argument('-g', '--gpu', type=str, default=None, help="GPU id to use")
+    parser.add_argument('-g', '--gpu', nargs='?', const='-1', default=None, 
+                        help="GPU id to use. If not specified, all available GPUs will be used.")
     parser.add_argument('--device_timeout', type=int, default=1200, help="Time to wait for GPUs to free up.")
     parser.add_argument('--debug', action="store_true", help="Debug mode (slower)")
     parser.add_argument('--skip-spectral-trailing', action="store_true", help="Use no spectral trailing (unsafe).")
@@ -306,11 +307,25 @@ def main():
 
     torch.no_grad()
 
-    # if data["padding"] != 1:
-    #     raise RuntimeError("Only skip padding=Yes is supported.")
-
     # Device assignment --------------
-    device_lock = DeviceLock(data["job_dir"], device_str=args.gpu, max_retry=args.device_timeout)
+        
+    # If device_str is -1, find all available devices and create a comma-separated string
+    if args.gpu == "-1" or args.gpu == "":
+        device_str = None
+        if torch.cuda.is_available():
+            device_count = torch.cuda.device_count()
+            if device_count > 0:
+                device_str = ",".join([str(i) for i in range(device_count)])
+                if device_count > 1:
+                    logger.info(f"Found {device_count} GPUs, using all: {device_str}")
+                else:
+                    logger.info(f"Found 1 GPU, using: {device_str}")
+        if device_str is None:
+            logger.info("No GPUs found, using CPU")
+    else:
+        device_str = args.gpu
+
+    device_lock = DeviceLock(data["job_dir"], device_str=device_str, max_retry=args.device_timeout)
     device = device_lock.get_device()
     logger.info(f"Selected device: {device}")
     device = torch.device(device)

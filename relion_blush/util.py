@@ -796,6 +796,14 @@ def install_and_load_model(
         "v1.0": [
             "https://zenodo.org/records/10072731/files/blush_v1.0.ckpt.gz",
             "6e42a7d80231418bb77170619eeedf67b59be84078972a25a39fc3b82cd9c34e"
+        ], 
+        "amy-v1.0": [
+            "https://zenodo.org/records/17938327/files/blush_amy-v1.0.ckpt.gz",
+            "bcae2807f1f3dd778c64bcb88ca9efa49eb72f024488e505e36edadc76791cb5"
+        ],
+        "amy-v1.0-lsd": [
+            "https://zenodo.org/records/17938327/files/blush_amy-v1.0-lsd.ckpt.gz",
+            "af0c9282af1debba00556edcd6b84fd2d7653030750239c8d0a36175993b49ed"
         ]
     }
 

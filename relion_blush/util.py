@@ -817,7 +817,7 @@ def install_and_load_model(
         if not os.path.isfile(completed_check_path):
             if verbose:
                 print(f"Installing Blush model ({name})...")
-                os.makedirs(dest_dir, exist_ok=True)
+            os.makedirs(dest_dir, exist_ok=True)
 
             source_url = model_list[name][0]
 
